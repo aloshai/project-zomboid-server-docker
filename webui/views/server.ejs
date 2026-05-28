@@ -1,0 +1,27 @@
+<% title = 'Server settings' %>
+<%- include('partials/header') %>
+
+<section class="card">
+  <h2>Server settings <span class="muted small"><%= serverName %>.ini</span></h2>
+
+  <% if (missing) { %>
+    <p class="empty">Config file not generated yet. Start the server once from the
+      Dashboard, then come back here.</p>
+  <% } else { %>
+    <form action="/settings/server" method="post" class="settings-form">
+      <div class="grid">
+        <% pairs.forEach(function (p) { %>
+          <label>
+            <span class="k"><%= p.key %></span>
+            <input type="text" name="<%= p.key %>" value="<%= p.value %>" />
+          </label>
+        <% }); %>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>

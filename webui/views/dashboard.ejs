@@ -1,0 +1,33 @@
+<% title = 'Dashboard' %>
+<%- include('partials/header') %>
+
+<section class="card">
+  <h2>Server status</h2>
+  <p>
+    State:
+    <span class="state state-<%= status.state.toLowerCase() %>"><%= status.state %></span>
+  </p>
+  <div class="controls">
+    <form action="/server/start" method="post"><button class="btn ok">Start</button></form>
+    <form action="/server/stop" method="post"><button class="btn danger">Stop</button></form>
+    <form action="/server/restart" method="post"><button class="btn warn">Restart</button></form>
+  </div>
+  <% if (status.raw) { %><pre class="muted small"><%= status.raw %></pre><% } %>
+</section>
+
+<section class="card">
+  <h2>Live log</h2>
+  <pre id="log" class="log"></pre>
+</section>
+
+<script>
+  const log = document.getElementById('log');
+  const es = new EventSource('/logs/stream');
+  es.onmessage = (e) => {
+    log.textContent += e.data + '\n';
+    log.scrollTop = log.scrollHeight;
+  };
+  es.onerror = () => { /* browser auto-reconnects */ };
+</script>
+
+<%- include('partials/footer') %>

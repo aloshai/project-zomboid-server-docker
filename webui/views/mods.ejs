@@ -1,0 +1,34 @@
+<% title = 'Mods' %>
+<%- include('partials/header') %>
+
+<section class="card">
+  <h2>Mods &amp; Workshop</h2>
+
+  <% if (missing) { %>
+    <p class="empty">Config file not generated yet. Start the server once from the
+      Dashboard, then come back here.</p>
+  <% } else { %>
+    <p class="muted small">
+      One ID per line. <strong>Workshop IDs</strong> are the numeric Steam Workshop
+      item IDs (downloaded on next restart). <strong>Mod IDs</strong> are the
+      internal mod names loaded by the game. Order matters for both.
+    </p>
+    <form action="/mods" method="post" class="settings-form">
+      <div class="grid2">
+        <label class="col">
+          <span class="k">Workshop IDs</span>
+          <textarea name="workshop" class="list" spellcheck="false"><%= workshop.join('\n') %></textarea>
+        </label>
+        <label class="col">
+          <span class="k">Mod IDs</span>
+          <textarea name="mods" class="list" spellcheck="false"><%= mods.join('\n') %></textarea>
+        </label>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>

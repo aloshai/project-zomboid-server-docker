@@ -3,3 +3,5 @@ data/*
 workshop-mods/*
 !workshop-mods/.gitkeep
 .env
+node_modules/
+webui/node_modules/

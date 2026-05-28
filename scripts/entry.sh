@@ -144,21 +144,30 @@ if [ -n "${STEAMPORT2}" ]; then
   ARGS="${ARGS} -steamport2 ${STEAMPORT1}"
 fi
 
-if [ -n "${PASSWORD}" ]; then
-	sed -i "s/Password=.*/Password=${PASSWORD}/" "${HOMEDIR}/Zomboid/Server/${SERVERNAME}.ini"
+INI_FILE="${HOMEDIR}/Zomboid/Server/${SERVERNAME}.ini"
+# Marker lives inside the Zomboid volume so the source-of-truth handoff persists
+# across container recreations.
+MODS_BOOTSTRAP_MARK="${HOMEDIR}/Zomboid/.pz-mods-bootstrapped"
+
+# Server join password: applied on every boot if set (opt-in env override).
+if [ -n "${PASSWORD}" ] && [ -f "${INI_FILE}" ]; then
+	sed -i "s/Password=.*/Password=${PASSWORD}/" "${INI_FILE}"
 fi
 
-if [ -n "${MOD_IDS}" ]; then
- 	echo "*** INFO: Found Mods including ${MOD_IDS} ***"
-	sed -i "s/Mods=.*/Mods=${MOD_IDS}/" "${HOMEDIR}/Zomboid/Server/${SERVERNAME}.ini"
-fi
-
-if [ -n "${WORKSHOP_IDS}" ]; then
- 	echo "*** INFO: Found Workshop IDs including ${WORKSHOP_IDS} ***"
-	sed -i "s/WorkshopItems=.*/WorkshopItems=${WORKSHOP_IDS}/" "${HOMEDIR}/Zomboid/Server/${SERVERNAME}.ini"
-else
- 	echo "*** INFO: Workshop IDs is empty, clearing configuration ***"
-	sed -i 's/WorkshopItems=.*$/WorkshopItems=/' "${HOMEDIR}/Zomboid/Server/${SERVERNAME}.ini"
+# Mods / Workshop are bootstrap-only. After the .ini exists we inject MOD_IDS /
+# WORKSHOP_IDS once, then hand the source of truth to the web admin UI so later
+# boots never clobber UI edits. The .ini only exists from the 2nd boot onward
+# (the server generates it on first run), which is when bootstrap takes effect.
+if [ -f "${INI_FILE}" ] && [ ! -f "${MODS_BOOTSTRAP_MARK}" ]; then
+	if [ -n "${MOD_IDS}" ]; then
+		echo "*** INFO: (bootstrap) Setting Mods=${MOD_IDS} ***"
+		sed -i "s/Mods=.*/Mods=${MOD_IDS}/" "${INI_FILE}"
+	fi
+	if [ -n "${WORKSHOP_IDS}" ]; then
+		echo "*** INFO: (bootstrap) Setting WorkshopItems=${WORKSHOP_IDS} ***"
+		sed -i "s/WorkshopItems=.*/WorkshopItems=${WORKSHOP_IDS}/" "${INI_FILE}"
+	fi
+	touch "${MODS_BOOTSTRAP_MARK}" 2>/dev/null || true
 fi
 
 # Fixes EOL in script file for good measure
@@ -196,9 +205,29 @@ export LD_LIBRARY_PATH="${STEAMAPPDIR}/jre64/lib:${LD_LIBRARY_PATH}"
 
 ## Fix the permissions in the data and workshop folders
 chown -R 1000:1000 /home/steam/pz-dedicated/steamapps/workshop /home/steam/Zomboid
-# When binding a host folder with Docker to the container, the resulting folder has these permissions "d---" (i.e. NO `rwx`) 
+# When binding a host folder with Docker to the container, the resulting folder has these permissions "d---" (i.e. NO `rwx`)
 # which will cause runtime issues after launching the server.
 # Fix it the adding back `rwx` permissions for the file owner (steam user)
 chmod 755 /home/steam/Zomboid
 
-su - steam -c "export LANG=${LANG} && export LD_LIBRARY_PATH=\"${STEAMAPPDIR}/jre64/lib:${LD_LIBRARY_PATH}\" && cd ${STEAMAPPDIR} && pwd && ./start-server.sh ${ARGS}"
+#######################################################
+#                                                     #
+# Generate the launch script and hand off to          #
+# supervisord, which manages pzserver + the web UI.   #
+#                                                     #
+#######################################################
+mkdir -p /var/log/supervisor
+
+# The game server start command, with the computed ARGS baked in. supervisord
+# runs this as the steam user and can restart it on demand from the web UI.
+cat > /server/scripts/launch_pz.sh <<EOF
+#!/bin/bash
+export LANG="${LANG}"
+export LD_LIBRARY_PATH="${STEAMAPPDIR}/jre64/lib:\${LD_LIBRARY_PATH}"
+cd "${STEAMAPPDIR}"
+exec ./start-server.sh ${ARGS}
+EOF
+chmod 755 /server/scripts/launch_pz.sh
+
+echo "*** INFO: Starting supervisord (pzserver + webui) ***"
+exec supervisord -c /etc/supervisor/supervisord.conf

@@ -1,0 +1,6 @@
+.git
+docs
+**/node_modules
+webui/node_modules
+*.log
+.env

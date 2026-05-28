@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= typeof title !== 'undefined' ? title : 'PZ Admin' %> · <%= serverName %></title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">PZ Admin <span class="srv"><%= serverName %></span></div>
+    <nav>
+      <a href="/" class="<%= path === '/' ? 'active' : '' %>">Dashboard</a>
+      <a href="/settings/server" class="<%= path.startsWith('/settings/server') ? 'active' : '' %>">Server</a>
+      <a href="/settings/sandbox" class="<%= path.startsWith('/settings/sandbox') ? 'active' : '' %>">Sandbox</a>
+      <a href="/mods" class="<%= path.startsWith('/mods') ? 'active' : '' %>">Mods</a>
+      <form action="/logout" method="post" class="logout"><button type="submit">Logout</button></form>
+    </nav>
+  </header>
+  <main>
+    <% if (typeof flash !== 'undefined' && flash) { %>
+      <div class="flash"><%= flash %></div>
+    <% } %>
+    <% if (restartPending) { %>
+      <div class="banner warn">
+        Unsaved changes are written, but a <strong>restart</strong> is required to apply them.
+        <form action="/server/restart" method="post"><button class="btn warn">Restart now</button></form>
+      </div>
+    <% } %>

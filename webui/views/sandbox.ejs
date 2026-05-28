@@ -1,0 +1,59 @@
+<% title = 'Sandbox settings' %>
+<%- include('partials/header') %>
+
+<section class="card">
+  <h2>Sandbox / game settings <span class="muted small"><%= serverName %>_SandboxVars.lua</span></h2>
+
+  <% if (missing) { %>
+    <p class="empty">Config file not generated yet. Start the server once from the
+      Dashboard, then come back here.</p>
+  <% } else if (parseError) { %>
+    <p class="error">Could not parse the file (<%= parseError %>). Editing raw instead.</p>
+    <form action="/settings/sandbox" method="post">
+      <textarea name="__raw" class="raw" spellcheck="false"><%= raw %></textarea>
+      <div class="form-actions"><button type="submit" class="btn primary">Save raw</button></div>
+    </form>
+  <% } else {
+       const groups = {};
+       fields.forEach(function (f) { (groups[f.section] = groups[f.section] || []).push(f); });
+       const sectionNames = Object.keys(groups);
+  %>
+    <details open class="rawtoggle">
+      <summary>Edit as raw Lua instead</summary>
+      <form action="/settings/sandbox" method="post">
+        <textarea name="__raw" class="raw" spellcheck="false"><%= raw %></textarea>
+        <div class="form-actions"><button type="submit" class="btn">Save raw</button></div>
+      </form>
+    </details>
+
+    <form action="/settings/sandbox" method="post" class="settings-form">
+      <% sectionNames.forEach(function (sec) { %>
+        <fieldset>
+          <legend><%= sec || 'General' %></legend>
+          <div class="grid">
+            <% groups[sec].forEach(function (f) { %>
+              <label>
+                <span class="k"><%= f.label %></span>
+                <% if (f.kind === 'boolean') { %>
+                  <select name="<%= f.path %>">
+                    <option value="true" <%= f.value ? 'selected' : '' %>>true</option>
+                    <option value="false" <%= !f.value ? 'selected' : '' %>>false</option>
+                  </select>
+                <% } else if (f.kind === 'number') { %>
+                  <input type="number" step="any" name="<%= f.path %>" value="<%= f.value %>" />
+                <% } else { %>
+                  <input type="text" name="<%= f.path %>" value="<%= f.value %>" />
+                <% } %>
+              </label>
+            <% }); %>
+          </div>
+        </fieldset>
+      <% }); %>
+      <div class="form-actions">
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </form>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>

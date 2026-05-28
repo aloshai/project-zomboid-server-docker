@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login · PZ Admin</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="login-page">
+  <form class="login-card" action="/login" method="post">
+    <h1>PZ Admin</h1>
+    <% if (noPassword) { %>
+      <p class="error">Login is disabled: set <code>UI_ADMIN_PASSWORD</code> in the environment.</p>
+    <% } %>
+    <% if (error) { %><p class="error"><%= error %></p><% } %>
+    <label>Username<input type="text" name="username" autocomplete="username" autofocus required /></label>
+    <label>Password<input type="password" name="password" autocomplete="current-password" required /></label>
+    <button type="submit" class="btn primary">Sign in</button>
+  </form>
+</body>
+</html>
