@@ -1,4 +1,3 @@
-version: "3.7"
 services:
   ProjectZomboidDedicatedServer:
     image: danixu86/project-zomboid-dedicated-server:latest
@@ -6,17 +5,41 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Steam beta branch (default = Build 42 unstable). See README for alternatives.
+        STEAM_BETA: ${STEAM_BETA:-unstable}
     env_file:
       - .env
-    ports:
-      - "16261:16261/udp"
-      - "16262:16262/udp"
-      - "27015:27015/tcp"
+    expose:
+      - "16261/udp"
+      - "16262/udp"
+      - "27015/tcp"
+    networks:
+      - dokploy-network
     volumes:
       # Server data
       - zomboid-data:/home/steam/Zomboid
       # Workshop mods folder
       - zomboid-workshop:/home/steam/pz-dedicated/steamapps/workshop
+    labels:
+      - traefik.enable=true
+      # ---- UDP: game traffic (default 16261) ----
+      - traefik.udp.routers.pz-game.entrypoints=pz-game
+      - traefik.udp.routers.pz-game.service=pz-game
+      - traefik.udp.services.pz-game.loadbalancer.server.port=16261
+      # ---- UDP: secondary game port (16262) ----
+      - traefik.udp.routers.pz-game2.entrypoints=pz-game2
+      - traefik.udp.routers.pz-game2.service=pz-game2
+      - traefik.udp.services.pz-game2.loadbalancer.server.port=16262
+      # ---- TCP: Steam query port (27015) ----
+      - traefik.tcp.routers.pz-query.entrypoints=pz-query
+      - traefik.tcp.routers.pz-query.rule=HostSNI(`*`)
+      - traefik.tcp.routers.pz-query.service=pz-query
+      - traefik.tcp.services.pz-query.loadbalancer.server.port=27015
+
+networks:
+  dokploy-network:
+    external: true
 
 volumes:
   zomboid-data:

@@ -11,6 +11,12 @@ ENV STEAMAPPDIR="${HOMEDIR}/${STEAMAPP}-dedicated"
 # Fix for a new installation problem in the Steamcmd client
 ENV HOME="${HOMEDIR}"
 
+# Steam beta branch to install. Defaults to "unstable" (Build 42).
+# Override at build time:  --build-arg STEAM_BETA=public           (Build 41)
+#                          --build-arg STEAM_BETA=b41multiplayer   (B41 MP test)
+ARG STEAM_BETA=unstable
+ENV STEAM_BETA=${STEAM_BETA}
+
 # Install required packages
 RUN apt-get update \
   && apt-get install -y --no-install-recommends --no-install-suggests \
@@ -30,7 +36,7 @@ RUN set -x \
   && chown -R "${USER}:${USER}" "${STEAMAPPDIR}" \
   && bash "${STEAMCMDDIR}/steamcmd.sh" +force_install_dir "${STEAMAPPDIR}" \
   +login anonymous \
-  +app_update "${STEAMAPPID}" validate \
+  +app_update "${STEAMAPPID}" -beta "${STEAM_BETA}" validate \
   +quit
 
 # Copy the entry point file

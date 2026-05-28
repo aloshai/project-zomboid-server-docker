@@ -8,6 +8,29 @@ https://hub.docker.com/r/danixu86/project-zomboid-dedicated-server
 
 **WARNING:** Running the image on Windows using WSL2 in Docker Desktop will make the server startup times significantly slower. This is fine unless you are running alot of mods in which case server startup times may vary from 15 - 40 minutes. The best way to solve this problem is to run your container on a Linux based system or in a Linux VM.
 
+## Steam branch (Build 41 vs Build 42)
+
+The image now defaults to **Build 42 (`unstable` Steam beta branch)**. The branch is set via the `STEAM_BETA` build arg:
+
+| Branch              | Build      | Notes                                          |
+| ------------------- | ---------- | ---------------------------------------------- |
+| `unstable` *(default)* | 42      | Public Build 42 beta — current "latest"        |
+| `public`            | 41         | Old stable Build 41                            |
+
+Override at build time:
+
+```bash
+STEAM_BETA=public docker compose build
+```
+
+Or via `.env`:
+
+```env
+STEAM_BETA=unstable
+```
+
+When `FORCEUPDATE=1` is set, the entry script will pull the same branch on every container start, so switching `STEAM_BETA` and rebuilding is all that's needed to migrate between B41 and B42.
+
 ## Environment variables
 
 This dockerfile converts some env variables to arguments in the server command, allowing to configure it. The image supports the following environment variables:
@@ -115,6 +138,51 @@ To setup the server you can use the docker-compose program:
 
 * Copy the .env.template to .env and edit it with the settings you want. The only mandatory variable is ADMINPASSWORD and just the first time the server is executed (once is started at least once, it can be removed). The other variables are optional.
 * Run the `docker-compose up -d` command to start the server.
+
+## Deploying on Dokploy (Traefik integration)
+
+The shipped `docker-compose.yml` is wired for **Dokploy's built-in Traefik**: it joins the `dokploy-network`, exposes the game ports internally (not on the host), and declares Traefik UDP/TCP routers via labels — so you don't need to bind a domain from the Dokploy UI.
+
+### 1. Add the custom entrypoints to Traefik
+
+Dokploy's Traefik static config (`/etc/dokploy/traefik/traefik.yml` on the host, or the **Settings → Traefik** editor in the UI) ships only with `web` (80) and `websecure` (443) entrypoints. Add the three game entrypoints so Traefik will actually listen on those ports:
+
+```yaml
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+  # ↓↓↓ add these
+  pz-game:
+    address: ":16261/udp"
+  pz-game2:
+    address: ":16262/udp"
+  pz-query:
+    address: ":27015"
+```
+
+Then restart Traefik (Dokploy → Settings → Traefik → Reload, or `docker restart dokploy-traefik`).
+
+### 2. Open the ports on the host firewall
+
+Whatever ports you listed above must be reachable from the internet:
+
+```bash
+ufw allow 16261/udp
+ufw allow 16262/udp
+ufw allow 27015/tcp
+```
+
+(or the equivalent in your cloud provider's security group).
+
+### 3. Deploy
+
+Push the repo, create a **Docker Compose** service in Dokploy pointing at this repo, set `ADMINPASSWORD` (and anything else you want) in the env editor, and deploy. Traefik will route incoming UDP/TCP on the published ports straight to the container — no domain binding required, the game uses raw IP:port.
+
+### Why not just publish ports directly?
+
+You can — just delete the `labels:` block, change `expose:` to `ports:`, and forget about Traefik. The Traefik path is only useful if you want a single ingress to manage (TLS for HTTP services, port reuse across containers, central logging, etc.).
 
 ## Scripts folder
 

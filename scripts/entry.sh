@@ -15,8 +15,8 @@ if [ "${FORCESTEAMCLIENTSOUPDATE}" == "1" ]; then
 fi
 
 if [ "${FORCEUPDATE}" == "1" ]; then
-  echo "FORCEUPDATE variable is set, so the server will be updated right now"
-  bash "${STEAMCMDDIR}/steamcmd.sh" +force_install_dir "${STEAMAPPDIR}" +login anonymous +app_update "${STEAMAPPID}" validate +quit
+  echo "FORCEUPDATE variable is set, so the server will be updated right now (branch: ${STEAM_BETA:-unstable})"
+  bash "${STEAMCMDDIR}/steamcmd.sh" +force_install_dir "${STEAMAPPDIR}" +login anonymous +app_update "${STEAMAPPID}" -beta "${STEAM_BETA:-unstable}" validate +quit
 fi
 
 
