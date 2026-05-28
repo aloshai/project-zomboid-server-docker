@@ -1,0 +1,14 @@
+# The image is built and run on Linux; force LF so shell scripts and configs
+# never get CRLF line endings (a CRLF shebang breaks the container entrypoint).
+* text=auto eol=lf
+*.sh text eol=lf
+*.conf text eol=lf
+*.js text eol=lf
+*.ejs text eol=lf
+*.lua text eol=lf
+Dockerfile text eol=lf
+
+# Binary types (don't touch)
+*.png binary
+*.jpg binary
+*.gif binary
