@@ -10,10 +10,14 @@ services:
         STEAM_BETA: ${STEAM_BETA:-unstable}
     env_file:
       - .env
+    ports:
+      # Game traffic is raw UDP/TCP and is published directly on the host.
+      # (Reverse proxies can't route by domain for non-HTTP game packets.)
+      - "16261:16261/udp"
+      - "16262:16262/udp"
+      - "27015:27015/tcp"
     expose:
-      - "16261/udp"
-      - "16262/udp"
-      - "27015/tcp"
+      # The web admin UI is reached internally by Traefik on the dokploy network.
       - "8080/tcp"
     networks:
       - dokploy-network
@@ -24,19 +28,6 @@ services:
       - zomboid-workshop:/home/steam/pz-dedicated/steamapps/workshop
     labels:
       - traefik.enable=true
-      # ---- UDP: game traffic (default 16261) ----
-      - traefik.udp.routers.pz-game.entrypoints=pz-game
-      - traefik.udp.routers.pz-game.service=pz-game
-      - traefik.udp.services.pz-game.loadbalancer.server.port=16261
-      # ---- UDP: secondary game port (16262) ----
-      - traefik.udp.routers.pz-game2.entrypoints=pz-game2
-      - traefik.udp.routers.pz-game2.service=pz-game2
-      - traefik.udp.services.pz-game2.loadbalancer.server.port=16262
-      # ---- TCP: Steam query port (27015) ----
-      - traefik.tcp.routers.pz-query.entrypoints=pz-query
-      - traefik.tcp.routers.pz-query.rule=HostSNI(`*`)
-      - traefik.tcp.routers.pz-query.service=pz-query
-      - traefik.tcp.services.pz-query.loadbalancer.server.port=27015
       # ---- HTTP: web admin UI (8080) — domain + TLS via Traefik ----
       # The UI is HTTP, so unlike the game ports it CAN be routed by domain.
       - traefik.http.routers.pz-ui.rule=Host(`${UI_DOMAIN}`)

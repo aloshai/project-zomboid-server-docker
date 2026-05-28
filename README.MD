@@ -189,34 +189,19 @@ npm test                      # parser round-trip tests
 ZOMBOID_DIR=/path/to/Zomboid UI_ADMIN_PASSWORD=secret npm start
 ```
 
-## Deploying on Dokploy (Traefik integration)
+## Deploying on Dokploy
 
-The shipped `docker-compose.yml` is wired for **Dokploy's built-in Traefik**: it joins the `dokploy-network`, exposes the game ports internally (not on the host), and declares Traefik UDP/TCP routers via labels — so you don't need to bind a domain from the Dokploy UI.
+The shipped `docker-compose.yml` is wired for Dokploy:
 
-### 1. Add the custom entrypoints to Traefik
+- **Game ports** (`16261/udp`, `16262/udp`, `27015/tcp`) are published **directly on
+  the host** via `ports:`. Game traffic is raw UDP/TCP — a reverse proxy can't route
+  it by domain — so direct publishing is the simplest, lowest-latency, and least
+  risky option (no changes to the shared Traefik).
+- **Web admin UI** joins the `dokploy-network` and is routed by Traefik over HTTPS
+  using the `Host(${UI_DOMAIN})` label, so you get a real certificate at
+  `https://<your-domain>` with no domain binding from the Dokploy UI.
 
-Dokploy's Traefik static config (`/etc/dokploy/traefik/traefik.yml` on the host, or the **Settings → Traefik** editor in the UI) ships only with `web` (80) and `websecure` (443) entrypoints. Add the three game entrypoints so Traefik will actually listen on those ports:
-
-```yaml
-entryPoints:
-  web:
-    address: ":80"
-  websecure:
-    address: ":443"
-  # ↓↓↓ add these
-  pz-game:
-    address: ":16261/udp"
-  pz-game2:
-    address: ":16262/udp"
-  pz-query:
-    address: ":27015"
-```
-
-Then restart Traefik (Dokploy → Settings → Traefik → Reload, or `docker restart dokploy-traefik`).
-
-### 2. Open the ports on the host firewall
-
-Whatever ports you listed above must be reachable from the internet:
+### 1. Open the game ports on the host firewall
 
 ```bash
 ufw allow 16261/udp
@@ -226,13 +211,18 @@ ufw allow 27015/tcp
 
 (or the equivalent in your cloud provider's security group).
 
+### 2. Point a DNS record at the server for the UI
+
+Create an `A` record for `UI_DOMAIN` (e.g. `pz-admin.example.com`) pointing at the
+Dokploy host IP, so Traefik can issue a Let's Encrypt certificate.
+
 ### 3. Deploy
 
-Push the repo, create a **Docker Compose** service in Dokploy pointing at this repo, set `ADMINPASSWORD` (and anything else you want) in the env editor, and deploy. Traefik will route incoming UDP/TCP on the published ports straight to the container — no domain binding required, the game uses raw IP:port.
-
-### Why not just publish ports directly?
-
-You can — just delete the `labels:` block, change `expose:` to `ports:`, and forget about Traefik. The Traefik path is only useful if you want a single ingress to manage (TLS for HTTP services, port reuse across containers, central logging, etc.).
+Create a **Docker Compose** service in Dokploy pointing at this repo (branch `main`,
+compose path `docker-compose.yml`), set the env vars (at minimum `ADMINPASSWORD`,
+`UI_ADMIN_PASSWORD`, `UI_SESSION_SECRET`, `UI_DOMAIN`), and deploy. Players connect to
+`host-ip:16261` (or a DNS name pointing at it); you manage the server at
+`https://<UI_DOMAIN>`.
 
 ## Scripts folder
 
