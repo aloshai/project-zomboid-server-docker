@@ -26,14 +26,11 @@ services:
       - zomboid-data:/home/steam/Zomboid
       # Workshop mods folder
       - zomboid-workshop:/home/steam/pz-dedicated/steamapps/workshop
-    labels:
-      - traefik.enable=true
-      # ---- HTTP: web admin UI (8080) — domain + TLS via Traefik ----
-      # The UI is HTTP, so unlike the game ports it CAN be routed by domain.
-      - traefik.http.routers.pz-ui.rule=Host(`${UI_DOMAIN}`)
-      - traefik.http.routers.pz-ui.entrypoints=websecure
-      - traefik.http.routers.pz-ui.tls.certresolver=letsencrypt
-      - traefik.http.services.pz-ui.loadbalancer.server.port=8080
+    # The web admin UI (port 8080) is exposed via Dokploy's Domains manager
+    # (Dokploy generates the Traefik router + Let's Encrypt cert for it), so no
+    # manual Traefik labels are needed here. Add the domain in Dokploy → the
+    # compose service → Domains, pointing at service "ProjectZomboidDedicatedServer"
+    # port 8080.
 
 networks:
   dokploy-network:
