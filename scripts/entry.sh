@@ -220,12 +220,19 @@ mkdir -p /var/log/supervisor
 
 # The game server start command, with the computed ARGS baked in. supervisord
 # runs this as the steam user and can restart it on demand from the web UI.
+#
+# The server reads admin console commands from stdin. We point stdin at a FIFO
+# opened read-write (<>) so the server never receives EOF and we don't need a
+# separate writer process; the web UI writes commands to this FIFO.
 cat > /server/scripts/launch_pz.sh <<EOF
 #!/bin/bash
 export LANG="${LANG}"
 export LD_LIBRARY_PATH="${STEAMAPPDIR}/jre64/lib:\${LD_LIBRARY_PATH}"
+PZ_STDIN="\${PZ_STDIN:-/tmp/pz-stdin}"
+rm -f "\$PZ_STDIN"
+mkfifo "\$PZ_STDIN"
 cd "${STEAMAPPDIR}"
-exec ./start-server.sh ${ARGS}
+exec ./start-server.sh ${ARGS} <> "\$PZ_STDIN"
 EOF
 chmod 755 /server/scripts/launch_pz.sh
 

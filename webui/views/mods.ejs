@@ -3,32 +3,68 @@
 
 <section class="card">
   <h2>Mods &amp; Workshop</h2>
-
   <% if (missing) { %>
-    <p class="empty">Config file not generated yet. Start the server once from the
-      Dashboard, then come back here.</p>
+    <p class="empty">Config not generated yet. Start the server once from the Dashboard, then come back.</p>
   <% } else { %>
     <p class="muted small">
-      One ID per line. <strong>Workshop IDs</strong> are the numeric Steam Workshop
-      item IDs (downloaded on next restart). <strong>Mod IDs</strong> are the
-      internal mod names loaded by the game. Order matters for both.
+      Edit the active lists (one ID per line, order matters). <strong>Workshop IDs</strong> are
+      downloaded on the next restart; <strong>Mod IDs</strong> are what the game loads. Use the
+      installed items below to add IDs quickly.
     </p>
     <form action="/mods" method="post" class="settings-form">
       <div class="grid2">
         <label class="col">
-          <span class="k">Workshop IDs</span>
-          <textarea name="workshop" class="list" spellcheck="false"><%= workshop.join('\n') %></textarea>
+          <span class="k">Active Workshop IDs</span>
+          <textarea name="workshop" id="workshopBox" class="list" spellcheck="false"><%= activeWorkshop.join('\n') %></textarea>
         </label>
         <label class="col">
-          <span class="k">Mod IDs</span>
-          <textarea name="mods" class="list" spellcheck="false"><%= mods.join('\n') %></textarea>
+          <span class="k">Active Mod IDs</span>
+          <textarea name="mods" id="modsBox" class="list" spellcheck="false"><%= activeMods.join('\n') %></textarea>
         </label>
       </div>
-      <div class="form-actions">
-        <button type="submit" class="btn primary">Save</button>
-      </div>
+      <div class="form-actions"><button type="submit" class="btn primary">Save</button></div>
     </form>
   <% } %>
 </section>
+
+<section class="card">
+  <h2>Installed Workshop items <span class="muted small"><%= installed.length %> found</span></h2>
+  <% if (!installed.length) { %>
+    <p class="muted small">No Workshop items downloaded yet. Add Workshop IDs above and restart to download them.</p>
+  <% } else { %>
+    <div class="mod-list">
+      <% installed.forEach(function (item) { var d = details[item.workshopId] || {}; %>
+        <div class="mod-item">
+          <% if (d.preview) { %><img class="mod-thumb" src="<%= d.preview %>" alt="" loading="lazy" /><% } %>
+          <div class="mod-meta">
+            <div class="mod-title">
+              <%= d.title || item.name %>
+              <a class="muted small" href="https://steamcommunity.com/sharedfiles/filedetails/?id=<%= item.workshopId %>" target="_blank" rel="noopener"><%= item.workshopId %></a>
+            </div>
+            <div class="chips">
+              <button type="button" class="chip add-workshop" data-id="<%= item.workshopId %>">+ Workshop <%= item.workshopId %></button>
+              <% item.mods.forEach(function (m) { %>
+                <button type="button" class="chip add-mod" data-id="<%= m.id %>">+ Mod <%= m.id %></button>
+              <% }); %>
+              <% item.maps.forEach(function (mp) { %><span class="chip map">map: <%= mp %></span><% }); %>
+            </div>
+          </div>
+        </div>
+      <% }); %>
+    </div>
+  <% } %>
+</section>
+
+<script>
+  function appendLine(box, val) {
+    const lines = box.value.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+    if (!lines.includes(val)) lines.push(val);
+    box.value = lines.join('\n');
+  }
+  document.querySelectorAll('.add-workshop').forEach((b) =>
+    b.addEventListener('click', () => appendLine(document.getElementById('workshopBox'), b.dataset.id)));
+  document.querySelectorAll('.add-mod').forEach((b) =>
+    b.addEventListener('click', () => appendLine(document.getElementById('modsBox'), b.dataset.id)));
+</script>
 
 <%- include('partials/footer') %>

@@ -25,5 +25,15 @@ module.exports = {
   adminPassword: process.env.UI_ADMIN_PASSWORD || '',
   sessionSecret: process.env.UI_SESSION_SECRET || 'change-me-please',
   // Name of the supervisord program controlling the game server.
-  pzProgram: process.env.PZ_PROGRAM || 'pzserver'
+  pzProgram: process.env.PZ_PROGRAM || 'pzserver',
+  // FIFO used as the game server stdin (see scripts/launch_pz.sh).
+  stdinPath: process.env.PZ_STDIN || '/tmp/pz-stdin',
+  // Steam workshop content for Project Zomboid (app 108600) inside the image.
+  workshopDir:
+    process.env.PZ_WORKSHOP_DIR ||
+    '/home/steam/pz-dedicated/steamapps/workshop/content/108600',
+  // Where panel state (schedule, backups) is persisted, inside the data volume.
+  adminStateDir: process.env.PZ_ADMIN_DIR || `${ZOMBOID_DIR}/.pz-admin`,
+  // Optional Steam Web API key to enable Workshop keyword search.
+  steamApiKey: process.env.STEAM_API_KEY || ''
 };

@@ -1,0 +1,67 @@
+<% title = 'Files' %>
+<%- include('partials/header') %>
+
+<% if (edit) { %>
+  <section class="card">
+    <h2>Edit <span class="mono small"><%= edit.path %></span></h2>
+    <form action="/files/save" method="post">
+      <input type="hidden" name="path" value="<%= edit.path %>" />
+      <textarea name="content" class="raw" spellcheck="false"><%= edit.content %></textarea>
+      <div class="form-actions">
+        <button type="submit" class="btn primary">Save</button>
+        <a class="btn" href="/files?path=<%= encodeURIComponent(edit.path.split('/').slice(0, -1).join('/')) %>">Back</a>
+      </div>
+    </form>
+  </section>
+<% } else { %>
+  <section class="card">
+    <h2>Files <span class="muted small">/<%= listing.cwd %></span></h2>
+
+    <div class="file-toolbar">
+      <% if (listing.parent !== null) { %>
+        <a class="btn small" href="/files?path=<%= encodeURIComponent(listing.parent) %>">⬆ Up</a>
+      <% } %>
+      <form action="/files/mkdir" method="post" class="inline-form">
+        <input type="hidden" name="parent" value="<%= listing.cwd %>" />
+        <input type="text" name="name" placeholder="new folder" required />
+        <button class="btn small">Create folder</button>
+      </form>
+      <form action="/files/upload?path=<%= encodeURIComponent(listing.cwd) %>" method="post" enctype="multipart/form-data" class="inline-form">
+        <input type="file" name="file" required />
+        <button class="btn small">Upload</button>
+      </form>
+    </div>
+
+    <table class="tbl">
+      <thead><tr><th>Name</th><th>Size</th><th>Modified</th><th></th></tr></thead>
+      <tbody>
+        <% listing.entries.forEach(function (e) { %>
+          <tr>
+            <td>
+              <% if (e.dir) { %>
+                📁 <a href="/files?path=<%= encodeURIComponent(e.path) %>"><%= e.name %></a>
+              <% } else { %>
+                📄 <%= e.name %>
+              <% } %>
+            </td>
+            <td><%= e.dir ? '' : (e.size / 1024).toFixed(1) + ' KB' %></td>
+            <td class="muted small"><%= e.mtime ? new Date(e.mtime).toLocaleString() : '' %></td>
+            <td class="row-actions">
+              <% if (!e.dir) { %>
+                <a class="btn small" href="/files/edit?path=<%= encodeURIComponent(e.path) %>">Edit</a>
+                <a class="btn small" href="/files/download?path=<%= encodeURIComponent(e.path) %>">Download</a>
+              <% } %>
+              <form action="/files/delete" method="post" onsubmit="return confirm('Delete <%= e.name %>?');">
+                <input type="hidden" name="path" value="<%= e.path %>" />
+                <input type="hidden" name="parent" value="<%= listing.cwd %>" />
+                <button class="btn small danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </section>
+<% } %>
+
+<%- include('partials/footer') %>

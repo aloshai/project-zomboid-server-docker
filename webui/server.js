@@ -1,21 +1,28 @@
 'use strict';
 
 const path = require('path');
-const fs = require('fs');
 const fsp = require('fs/promises');
 const express = require('express');
 const session = require('express-session');
+const Busboy = require('busboy');
 
 const cfg = require('./lib/config');
 const auth = require('./lib/auth');
 const ini = require('./lib/ini');
 const sandbox = require('./lib/sandbox');
 const supervisor = require('./lib/supervisor');
+const pzconsole = require('./lib/console');
+const workshop = require('./lib/workshop');
+const stats = require('./lib/stats');
+const files = require('./lib/files');
+const backups = require('./lib/backups');
+const scheduler = require('./lib/scheduler');
 
 const app = express();
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
-app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '4mb' }));
+app.use(express.json({ limit: '4mb' }));
 app.use('/static', express.static(path.join(__dirname, 'public')));
 
 app.use(
@@ -28,7 +35,6 @@ app.use(
   })
 );
 
-// Make a "restart required" flag and server name available to all views.
 app.use((req, res, next) => {
   res.locals.serverName = cfg.SERVERNAME;
   res.locals.restartPending = req.session ? !!req.session.restartPending : false;
@@ -43,6 +49,13 @@ async function readFileOrNull(p) {
     if (e.code === 'ENOENT') return null;
     throw e;
   }
+}
+
+function splitList(value) {
+  return (value || '')
+    .split(/[;\r\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 // ---------- Auth ----------
@@ -63,14 +76,13 @@ app.post('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/login'));
 });
 
-// Everything below requires auth.
 app.use(auth.requireAuth);
 
 // ---------- Dashboard ----------
 app.get('/', async (req, res, next) => {
   try {
     const st = await supervisor.status();
-    res.render('dashboard', { status: st });
+    res.render('dashboard', { status: st, cpus: stats.numCpus });
   } catch (e) {
     next(e);
   }
@@ -90,6 +102,16 @@ app.post('/server/:action', async (req, res) => {
   res.redirect('/');
 });
 
+// Send an admin console command to the running server.
+app.post('/console', async (req, res) => {
+  try {
+    const line = await pzconsole.send(req.body.command);
+    res.json({ ok: true, line });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
 // Live log stream (SSE).
 app.get('/logs/stream', (req, res) => {
   res.set({
@@ -99,13 +121,16 @@ app.get('/logs/stream', (req, res) => {
   });
   res.flushHeaders();
   const child = supervisor.tailLog((chunk) => {
-    for (const line of chunk.split('\n')) {
-      res.write(`data: ${line}\n\n`);
-    }
+    for (const line of chunk.split('\n')) res.write(`data: ${line}\n\n`);
   });
   req.on('close', () => {
     try { child.kill(); } catch (_) { /* ignore */ }
   });
+});
+
+// Resource stats history (CPU/RAM) for the dashboard chart.
+app.get('/api/stats', (req, res) => {
+  res.json({ cpus: stats.numCpus, history: stats.history() });
 });
 
 // ---------- Server .ini settings ----------
@@ -144,7 +169,6 @@ app.get('/settings/sandbox', async (req, res, next) => {
       const root = sandbox.parse(text);
       res.render('sandbox', { missing: false, fields: sandbox.fields(root), parseError: null, raw: text });
     } catch (pe) {
-      // Fall back to raw editor on parse failure.
       res.render('sandbox', { missing: false, fields: [], parseError: pe.message, raw: text });
     }
   } catch (e) {
@@ -155,7 +179,6 @@ app.get('/settings/sandbox', async (req, res, next) => {
 app.post('/settings/sandbox', async (req, res, next) => {
   try {
     if (req.body.__raw !== undefined) {
-      // Raw editor save.
       await fsp.writeFile(cfg.sandboxPath, req.body.__raw, 'utf8');
     } else {
       const text = await readFileOrNull(cfg.sandboxPath);
@@ -173,28 +196,28 @@ app.post('/settings/sandbox', async (req, res, next) => {
 });
 
 // ---------- Mods / Workshop ----------
-// Accepts both the .ini form (semicolon-separated) and the textarea form
-// (newline-separated) and normalises to a clean array.
-function splitList(value) {
-  return (value || '')
-    .split(/[;\r\n]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 app.get('/mods', async (req, res, next) => {
   try {
     const text = await readFileOrNull(cfg.iniPath);
-    if (text === null) return res.render('mods', { missing: true, mods: [], workshop: [] });
-    const entries = ini.parse(text);
+    const entries = text === null ? null : ini.parse(text);
     const get = (k) => {
+      if (!entries) return '';
       const e = entries.find((x) => x.type === 'kv' && x.key === k);
       return e ? e.value : '';
     };
+    const activeMods = splitList(get('Mods'));
+    const activeWorkshop = splitList(get('WorkshopItems'));
+
+    const installed = await workshop.scanInstalled();
+    const detailIds = Array.from(new Set([...activeWorkshop, ...installed.map((i) => i.workshopId)]));
+    const details = await workshop.fetchDetails(detailIds);
+
     res.render('mods', {
-      missing: false,
-      mods: splitList(get('Mods')),
-      workshop: splitList(get('WorkshopItems'))
+      missing: text === null,
+      activeMods,
+      activeWorkshop,
+      installed,
+      details
     });
   } catch (e) {
     next(e);
@@ -206,9 +229,10 @@ app.post('/mods', async (req, res, next) => {
     const text = await readFileOrNull(cfg.iniPath);
     if (text === null) return res.status(409).send('Config not generated yet. Start the server once.');
     const entries = ini.parse(text);
-    const mods = splitList(req.body.mods).join(';');
-    const workshop = splitList(req.body.workshop).join(';');
-    ini.applyValues(entries, { Mods: mods, WorkshopItems: workshop });
+    ini.applyValues(entries, {
+      Mods: splitList(req.body.mods).join(';'),
+      WorkshopItems: splitList(req.body.workshop).join(';')
+    });
     await fsp.writeFile(cfg.iniPath, ini.serialize(entries), 'utf8');
     req.session.restartPending = true;
     req.session.flash = 'Mods saved. Restart to download new Workshop items and apply.';
@@ -218,12 +242,174 @@ app.post('/mods', async (req, res, next) => {
   }
 });
 
+// ---------- Backups & schedule ----------
+app.get('/backups', async (req, res, next) => {
+  try {
+    res.render('backups', { list: await backups.list(), schedule: scheduler.get() });
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.post('/backups/create', async (req, res) => {
+  try {
+    const name = await backups.create();
+    req.session.flash = `Backup created: ${name}`;
+  } catch (e) {
+    req.session.flash = `Backup failed: ${e.message}`;
+  }
+  res.redirect('/backups');
+});
+
+app.post('/backups/restore', async (req, res) => {
+  try {
+    await backups.restore(req.body.name);
+    req.session.flash = `Restored ${req.body.name}. Server restarting.`;
+  } catch (e) {
+    req.session.flash = `Restore failed: ${e.message}`;
+  }
+  res.redirect('/backups');
+});
+
+app.post('/backups/delete', async (req, res) => {
+  try {
+    await backups.remove(req.body.name);
+    req.session.flash = `Deleted ${req.body.name}`;
+  } catch (e) {
+    req.session.flash = `Delete failed: ${e.message}`;
+  }
+  res.redirect('/backups');
+});
+
+app.get('/backups/download', async (req, res, next) => {
+  try {
+    res.download(backups.filePath(req.query.name));
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.post('/schedule', async (req, res) => {
+  try {
+    await scheduler.save({
+      restart: {
+        enabled: req.body.restartEnabled === 'on' || req.body.restartEnabled === 'true',
+        cron: req.body.restartCron,
+        warnMinutes: parseInt(req.body.restartWarn, 10) || 0
+      },
+      backup: {
+        enabled: req.body.backupEnabled === 'on' || req.body.backupEnabled === 'true',
+        cron: req.body.backupCron,
+        retention: parseInt(req.body.backupRetention, 10) || 7
+      }
+    });
+    req.session.flash = 'Schedule saved.';
+  } catch (e) {
+    req.session.flash = `Schedule error: ${e.message}`;
+  }
+  res.redirect('/backups');
+});
+
+// ---------- File manager ----------
+app.get('/files', async (req, res, next) => {
+  try {
+    res.render('files', { listing: await files.list(req.query.path || ''), edit: null });
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.get('/files/edit', async (req, res, next) => {
+  try {
+    const content = await files.readText(req.query.path);
+    res.render('files', { listing: null, edit: { path: req.query.path, content } });
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.post('/files/save', async (req, res, next) => {
+  try {
+    await files.writeText(req.body.path, req.body.content);
+    req.session.flash = `Saved ${req.body.path}`;
+    res.redirect('/files/edit?path=' + encodeURIComponent(req.body.path));
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.post('/files/delete', async (req, res, next) => {
+  try {
+    await files.remove(req.body.path);
+    req.session.flash = `Deleted ${req.body.path}`;
+    res.redirect('/files?path=' + encodeURIComponent(req.body.parent || ''));
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.post('/files/mkdir', async (req, res, next) => {
+  try {
+    const target = (req.body.parent ? req.body.parent + '/' : '') + req.body.name;
+    await files.mkdir(target);
+    res.redirect('/files?path=' + encodeURIComponent(req.body.parent || ''));
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.get('/files/download', (req, res, next) => {
+  try {
+    res.download(files.downloadPath(req.query.path));
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.post('/files/upload', (req, res) => {
+  const dir = req.query.path || '';
+  let bb;
+  try {
+    bb = Busboy({ headers: req.headers, limits: { fileSize: 200 * 1024 * 1024 } });
+  } catch (e) {
+    return res.status(400).send(e.message);
+  }
+  let pending = 0;
+  let done = false;
+  const finish = () => {
+    if (done && pending === 0) {
+      req.session.flash = 'Upload complete.';
+      res.redirect('/files?path=' + encodeURIComponent(dir));
+    }
+  };
+  bb.on('file', (name, file, info) => {
+    try {
+      const { stream } = files.uploadStream(dir, info.filename);
+      pending++;
+      file.pipe(stream);
+      stream.on('close', () => {
+        pending--;
+        finish();
+      });
+    } catch (e) {
+      file.resume();
+      res.status(400).send(e.message);
+    }
+  });
+  bb.on('close', () => {
+    done = true;
+    finish();
+  });
+  req.pipe(bb);
+});
+
+// ---------- Errors + flash ----------
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   console.error(err);
+  if (req.path.startsWith('/api/')) return res.status(500).json({ error: err.message });
   res.status(500).send(`Error: ${err.message}`);
 });
 
-// Inject flash into render locals.
 const origRender = app.response.render;
 app.response.render = function (view, opts, cb) {
   const o = opts || {};
@@ -240,6 +426,8 @@ if (require.main === module) {
   if (!cfg.adminPassword) {
     console.warn('[pz-admin] WARNING: UI_ADMIN_PASSWORD is not set — login is disabled until you set it.');
   }
+  stats.start();
+  scheduler.start().catch((e) => console.error('[pz-admin] scheduler start failed:', e.message));
   app.listen(cfg.port, () => {
     console.log(`[pz-admin] listening on :${cfg.port} (server "${cfg.SERVERNAME}")`);
   });

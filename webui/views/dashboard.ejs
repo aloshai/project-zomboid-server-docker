@@ -3,31 +3,99 @@
 
 <section class="card">
   <h2>Server status</h2>
-  <p>
-    State:
-    <span class="state state-<%= status.state.toLowerCase() %>"><%= status.state %></span>
-  </p>
+  <p>State: <span class="state state-<%= status.state.toLowerCase() %>"><%= status.state %></span></p>
   <div class="controls">
     <form action="/server/start" method="post"><button class="btn ok">Start</button></form>
     <form action="/server/stop" method="post"><button class="btn danger">Stop</button></form>
     <form action="/server/restart" method="post"><button class="btn warn">Restart</button></form>
   </div>
-  <% if (status.raw) { %><pre class="muted small"><%= status.raw %></pre><% } %>
 </section>
 
 <section class="card">
-  <h2>Live log</h2>
+  <h2>Resource usage <span class="muted small">container · <%= cpus %> CPU(s)</span></h2>
+  <div class="stats-row">
+    <div class="stat"><span class="stat-label">CPU</span><span id="cpuNow" class="stat-val">—</span></div>
+    <div class="stat"><span class="stat-label">RAM</span><span id="memNow" class="stat-val">—</span></div>
+  </div>
+  <canvas id="resChart" height="90"></canvas>
+</section>
+
+<section class="card">
+  <h2>Console</h2>
+  <form id="cmdForm" class="cmd-form" autocomplete="off">
+    <input type="text" id="cmdInput" placeholder="Admin command (e.g. save, players, servermsg &quot;hi&quot;)" />
+    <button class="btn primary" type="submit">Send</button>
+  </form>
   <pre id="log" class="log"></pre>
 </section>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
+  // ---- live log ----
   const log = document.getElementById('log');
   const es = new EventSource('/logs/stream');
   es.onmessage = (e) => {
     log.textContent += e.data + '\n';
     log.scrollTop = log.scrollHeight;
   };
-  es.onerror = () => { /* browser auto-reconnects */ };
+
+  // ---- console command ----
+  const form = document.getElementById('cmdForm');
+  const input = document.getElementById('cmdInput');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const command = input.value.trim();
+    if (!command) return;
+    const r = await fetch('/console', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command })
+    });
+    const j = await r.json().catch(() => ({}));
+    log.textContent += '> ' + (j.line || command) + (j.ok ? '\n' : ' (error: ' + (j.error || 'failed') + ')\n');
+    log.scrollTop = log.scrollHeight;
+    input.value = '';
+  });
+
+  // ---- resource chart ----
+  const ctx = document.getElementById('resChart');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { label: 'CPU %', data: [], borderColor: '#4ea1ff', tension: 0.3, pointRadius: 0, yAxisID: 'y' },
+        { label: 'RAM MB', data: [], borderColor: '#3fb950', tension: 0.3, pointRadius: 0, yAxisID: 'y1' }
+      ]
+    },
+    options: {
+      animation: false,
+      scales: {
+        y: { type: 'linear', position: 'left', min: 0, max: 100, ticks: { color: '#8b95a4' }, grid: { color: '#2c333f' } },
+        y1: { type: 'linear', position: 'right', min: 0, ticks: { color: '#8b95a4' }, grid: { drawOnChartArea: false } },
+        x: { ticks: { color: '#8b95a4', maxTicksLimit: 6 }, grid: { color: '#2c333f' } }
+      },
+      plugins: { legend: { labels: { color: '#e6e9ee' } } }
+    }
+  });
+  async function refreshStats() {
+    try {
+      const r = await fetch('/api/stats');
+      const { history } = await r.json();
+      chart.data.labels = history.map((p) => new Date(p.t).toLocaleTimeString());
+      chart.data.datasets[0].data = history.map((p) => p.cpu);
+      chart.data.datasets[1].data = history.map((p) => p.memMB);
+      chart.update();
+      const last = history[history.length - 1];
+      if (last) {
+        document.getElementById('cpuNow').textContent = last.cpu + ' %';
+        document.getElementById('memNow').textContent =
+          last.memMB + ' MB' + (last.memMax ? ' / ' + last.memMax + ' MB' : '');
+      }
+    } catch (_) { /* ignore */ }
+  }
+  refreshStats();
+  setInterval(refreshStats, 5000);
 </script>
 
 <%- include('partials/footer') %>

@@ -1,0 +1,72 @@
+<% title = 'Backups' %>
+<%- include('partials/header') %>
+
+<section class="card">
+  <h2>Schedule</h2>
+  <form action="/schedule" method="post" class="settings-form">
+    <fieldset>
+      <legend>Automatic restart</legend>
+      <div class="grid">
+        <label><span class="k">Enabled</span>
+          <select name="restartEnabled">
+            <option value="true" <%= schedule.restart.enabled ? 'selected' : '' %>>true</option>
+            <option value="false" <%= !schedule.restart.enabled ? 'selected' : '' %>>false</option>
+          </select>
+        </label>
+        <label><span class="k">Cron</span><input type="text" name="restartCron" value="<%= schedule.restart.cron %>" /></label>
+        <label><span class="k">Warn minutes</span><input type="number" name="restartWarn" value="<%= schedule.restart.warnMinutes %>" /></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Automatic backup</legend>
+      <div class="grid">
+        <label><span class="k">Enabled</span>
+          <select name="backupEnabled">
+            <option value="true" <%= schedule.backup.enabled ? 'selected' : '' %>>true</option>
+            <option value="false" <%= !schedule.backup.enabled ? 'selected' : '' %>>false</option>
+          </select>
+        </label>
+        <label><span class="k">Cron</span><input type="text" name="backupCron" value="<%= schedule.backup.cron %>" /></label>
+        <label><span class="k">Keep last N</span><input type="number" name="backupRetention" value="<%= schedule.backup.retention %>" /></label>
+      </div>
+    </fieldset>
+    <p class="muted small">Cron format: <code>min hour day month weekday</code> (e.g. <code>0 5 * * *</code> = 05:00 daily). Server time.</p>
+    <div class="form-actions"><button type="submit" class="btn primary">Save schedule</button></div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Backups</h2>
+  <form action="/backups/create" method="post" class="inline-form">
+    <button type="submit" class="btn ok">Back up now</button>
+    <span class="muted small">Archives Saves/, Server/ and db/ into the data volume.</span>
+  </form>
+
+  <% if (!list.length) { %>
+    <p class="muted small" style="margin-top:1rem">No backups yet.</p>
+  <% } else { %>
+    <table class="tbl">
+      <thead><tr><th>Name</th><th>Size</th><th>Date</th><th></th></tr></thead>
+      <tbody>
+        <% list.forEach(function (b) { %>
+          <tr>
+            <td class="mono"><%= b.name %></td>
+            <td><%= (b.size / 1048576).toFixed(1) %> MB</td>
+            <td class="muted small"><%= new Date(b.mtime).toLocaleString() %></td>
+            <td class="row-actions">
+              <a class="btn small" href="/backups/download?name=<%= encodeURIComponent(b.name) %>">Download</a>
+              <form action="/backups/restore" method="post" onsubmit="return confirm('Restore this backup? The server will be stopped, files overwritten, then started.');">
+                <input type="hidden" name="name" value="<%= b.name %>" /><button class="btn small warn">Restore</button>
+              </form>
+              <form action="/backups/delete" method="post" onsubmit="return confirm('Delete this backup?');">
+                <input type="hidden" name="name" value="<%= b.name %>" /><button class="btn small danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } %>
+</section>
+
+<%- include('partials/footer') %>
