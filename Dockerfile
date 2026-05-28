@@ -35,15 +35,25 @@ RUN sed -i 's/^# *\(es_ES.UTF-8\)/\1/' /etc/locale.gen \
   # Generate locale
   && locale-gen
 
-# Download the Project Zomboid dedicated server app using the steamcmd app
-# Set the entry point file permissions
+# Download the Project Zomboid dedicated server app using the steamcmd app.
+# steamcmd intermittently fails the first app_update right after it self-updates
+# with "Failed to install app ... (Missing configuration)" (exit 8). This is a
+# well-known transient error, so retry a few times until it succeeds.
 RUN set -x \
   && mkdir -p "${STEAMAPPDIR}" \
   && chown -R "${USER}:${USER}" "${STEAMAPPDIR}" \
-  && bash "${STEAMCMDDIR}/steamcmd.sh" +force_install_dir "${STEAMAPPDIR}" \
-  +login anonymous \
-  +app_update "${STEAMAPPID}" -beta "${STEAM_BETA}" validate \
-  +quit
+  && success=0 \
+  && for i in 1 2 3 4 5 6; do \
+       echo "=== steamcmd app_update attempt ${i} ===" ; \
+       if bash "${STEAMCMDDIR}/steamcmd.sh" +force_install_dir "${STEAMAPPDIR}" \
+            +login anonymous \
+            +app_update "${STEAMAPPID}" -beta "${STEAM_BETA}" validate \
+            +quit ; then \
+         success=1 ; break ; \
+       fi ; \
+       echo "attempt ${i} failed, retrying in 15s..." ; sleep 15 ; \
+     done \
+  && [ "${success}" = "1" ]
 
 # Copy the entry point file
 COPY --chown=${USER}:${USER} scripts/entry.sh /server/scripts/entry.sh
